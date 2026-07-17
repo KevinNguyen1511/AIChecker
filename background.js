@@ -1,17 +1,22 @@
+// =========================================================
+// 🔑 PASTE YOUR FREE GEMINI API KEY HERE:
+const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE";
+// =========================================================
+
 let currentQuizTabId = null;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
-    id: "sendToChatGPT",
-    title: "Solve with ChatGPT",
+    id: "sendToGemini",
+    title: "Solve with Gemini",
     contexts: ["selection"]
   });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "sendToChatGPT" && info.selectionText && tab?.id) {
+  if (info.menuItemId === "sendToGemini" && info.selectionText && tab?.id) {
     currentQuizTabId = tab.id;
-    processDirectStream(info.selectionText);
+    processApiStream(info.selectionText);
   }
 });
 
@@ -21,20 +26,19 @@ chrome.commands.onCommand.addListener((command) => {
       if (tabs[0]?.id) {
         currentQuizTabId = tabs[0].id;
 
-        // Ensure content script is ready
         chrome.scripting.executeScript({
           target: { tabId: tabs[0].id },
           files: ["content.js"]
         }).then(() => {
           chrome.tabs.sendMessage(tabs[0].id, { action: "GET_SELECTION" }, (response) => {
             if (response?.text) {
-              processDirectStream(response.text);
+              processApiStream(response.text);
             }
           });
         }).catch(() => {
           chrome.tabs.sendMessage(tabs[0].id, { action: "GET_SELECTION" }, (response) => {
             if (response?.text) {
-              processDirectStream(response.text);
+              processApiStream(response.text);
             }
           });
         });
@@ -43,65 +47,42 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
-// Helper to get active session token from chatgpt.com
-async function getAccessToken() {
-  try {
-    const response = await fetch("https://chatgpt.com/api/auth/session");
-    if (!response.ok) return null;
-    const data = await response.json();
-    return data.accessToken || null;
-  } catch (e) {
-    return null;
-  }
-}
-
-async function processDirectStream(promptText) {
+async function processApiStream(promptText) {
   if (!currentQuizTabId) return;
 
-  sendAnswerToQuizTab(currentQuizTabId, "⚡ Connecting to ChatGPT stream...");
-
-  const accessToken = await getAccessToken();
-
-  if (!accessToken) {
+  if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("YOUR_GEMINI_API_KEY_HERE")) {
     sendAnswerToQuizTab(
       currentQuizTabId,
-      "❌ Not logged in! Please open chatgpt.com in a new tab, log in, and try again."
+      "❌ Missing API Key! Please paste your free Gemini key at top of background.js."
     );
     return;
   }
 
+  sendAnswerToQuizTab(currentQuizTabId, "⚡ Thinking...");
+
   const formattedPrompt = `SYSTEM INSTRUCTION: You are an instant multiple-choice quiz solver. Respond ONLY with the correct multiple-choice option (letter and answer choice) and a 1-sentence explanation. Keep it extremely brief and short.\n\nQUESTION:\n${promptText}`;
 
+  // Direct SSE stream endpoint for Gemini 1.5 Flash
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
+
   try {
-    const response = await fetch("https://chatgpt.com/backend-api/conversation", {
+    const response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${accessToken}`
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        action: "next",
-        messages: [
-          {
-            id: crypto.randomUUID(),
-            author: { role: "user" },
-            content: { content_type: "text", parts: [formattedPrompt] }
-          }
-        ],
-        model: "auto",
-        timezone_offset_min: -480
+        contents: [{ parts: [{ text: formattedPrompt }] }]
       })
     });
 
     if (!response.ok) {
-      sendAnswerToQuizTab(currentQuizTabId, `❌ ChatGPT Error: ${response.statusText}`);
+      const errText = await response.text();
+      sendAnswerToQuizTab(currentQuizTabId, `❌ Gemini Error (${response.status}): ${errText}`);
       return;
     }
 
-    // Read response network stream in real-time
     const reader = response.body.getReader();
     const decoder = new TextDecoder("utf-8");
-    let accumulatedAnswer = "";
+    let accumulatedText = "";
 
     while (true) {
       const { done, value } = await reader.read();
@@ -111,22 +92,22 @@ async function processDirectStream(promptText) {
       const lines = chunk.split("\n");
 
       for (const line of lines) {
-        if (line.startsWith("data: ") && !line.includes("[DONE]")) {
+        if (line.startsWith("data: ")) {
           try {
             const parsed = JSON.parse(line.replace("data: ", ""));
-            const parts = parsed?.message?.content?.parts;
-            if (parts && parts.length > 0) {
-              accumulatedAnswer = parts[0];
-              sendAnswerToQuizTab(currentQuizTabId, accumulatedAnswer);
+            const textChunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
+            if (textChunk) {
+              accumulatedText += textChunk;
+              sendAnswerToQuizTab(currentQuizTabId, accumulatedText);
             }
           } catch (e) {
-            // Ignore incomplete JSON stream chunks
+            // Ignore partial JSON frames
           }
         }
       }
     }
   } catch (err) {
-    sendAnswerToQuizTab(currentQuizTabId, `❌ Stream failed: ${err.message}`);
+    sendAnswerToQuizTab(currentQuizTabId, `❌ Request failed: ${err.message}`);
   }
 }
 

@@ -1,18 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Universal Quiz AI Bridge",
-  "version": "1",
-  "description": "Streams ChatGPT answers directly into your quiz tab without background tab throttling.",
+  "version": "3.0",
+  "description": "Instant live-streaming quiz assistant powered by Gemini API.",
   "permissions": [
     "activeTab",
     "scripting",
     "tabs",
-    "contextMenus",
-    "cookies"
-  ],
-  "host_permissions": [
-    "<all_urls>",
-    "https://chatgpt.com/*"
+    "contextMenus"
   ],
   "background": {
     "service_worker": "background.js"
@@ -29,7 +24,7 @@
         "default": "Alt+S",
         "mac": "Alt+S"
       },
-      "description": "Send selected question to ChatGPT"
+      "description": "Send selected question to Gemini AI"
     }
   }
 }
