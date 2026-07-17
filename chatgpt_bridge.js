@@ -40,6 +40,8 @@ function injectAndSubmit(textPrompt) {
 
 function observeResponse() {
   let checkCount = 0;
+  let lastText = "";
+
   const interval = setInterval(() => {
     checkCount++;
     const responses = document.querySelectorAll(".markdown, .agent-turn");
@@ -48,7 +50,9 @@ function observeResponse() {
       const latestResponse = responses[responses.length - 1];
       const answer = latestResponse.innerText.trim();
 
-      if (answer.length > 0) {
+      // Send updates as ChatGPT streams the response live
+      if (answer.length > 0 && answer !== lastText) {
+        lastText = answer;
         chrome.runtime.sendMessage({
           action: "RELAY_ANSWER_TO_QUIZ",
           answer: answer
@@ -56,13 +60,13 @@ function observeResponse() {
       }
     }
 
-    if (checkCount > 35) {
+    if (checkCount > 40) {
       clearInterval(interval);
     }
-  }, 600);
+  }, 500);
 }
 
-// Handle initial launch via URL query string
+// Initial auto-submit run if page was loaded via URL query parameter
 if (window.location.search.includes("q=")) {
   setTimeout(() => {
     const sendBtn = 

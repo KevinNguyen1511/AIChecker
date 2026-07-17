@@ -32,27 +32,28 @@ chrome.commands.onCommand.addListener((command) => {
 });
 
 function processQuery(promptText) {
-  const formattedPrompt = `State the best direct answer choice for this question in 1-2 short sentences:\n\n${promptText}`;
+  // Enhanced prompt instructing ChatGPT to respond exclusively with short multiple-choice answers
+  const formattedPrompt = `SYSTEM INSTRUCTION: You are an instant multiple-choice quiz solver. Respond ONLY with the correct multiple-choice option (letter and answer choice) and a 1-sentence explanation. Keep it extremely brief and short.\n\nQUESTION:\n${promptText}`;
 
+  // Notify user immediately on the quiz page
   if (currentQuizTabId) {
     chrome.tabs.sendMessage(currentQuizTabId, { 
       action: "DISPLAY_ANSWER", 
-      answer: "⏳ Fetching answer from ChatGPT..." 
+      answer: "🔍 Looking at ChatGPT..." 
     });
   }
 
   chrome.tabs.query({ url: "https://chatgpt.com/*" }, (tabs) => {
     if (tabs.length > 0) {
-      // ChatGPT tab already exists: send in background without tab switching
+      // Tab exists: submit silently in background
       chatGptTabId = tabs[0].id;
       chrome.tabs.sendMessage(chatGptTabId, { action: "INJECT_PROMPT", prompt: formattedPrompt });
     } else {
-      // First time setup: open tab with query parameter
+      // First-time setup: open tab, submit, and quickly return to quiz tab
       const encodedQuery = encodeURIComponent(formattedPrompt);
       chrome.tabs.create({ url: `https://chatgpt.com/?q=${encodedQuery}`, active: true }, (newTab) => {
         chatGptTabId = newTab.id;
 
-        // Return focus back to quiz page after submit triggers
         setTimeout(() => {
           if (currentQuizTabId) {
             chrome.tabs.update(currentQuizTabId, { active: true });
@@ -63,7 +64,7 @@ function processQuery(promptText) {
   });
 }
 
-// Relays generated answer back to quiz popup box
+// Forward responses directly to active quiz tab
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === "RELAY_ANSWER_TO_QUIZ" && currentQuizTabId) {
     chrome.tabs.sendMessage(currentQuizTabId, {
