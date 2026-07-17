@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Universal Quiz AI Bridge",
   "version": "1.0",
-  "description": "Extracts quiz questions from any website and forwards them directly to ChatGPT.",
+  "description": "Extracts quiz questions and displays ChatGPT answers in a floating popup.",
   "permissions": [
     "activeTab",
     "scripting",
@@ -32,7 +32,7 @@
         "default": "Alt+S",
         "mac": "Alt+S"
       },
-      "description": "Send selected text or question block to ChatGPT"
+      "description": "Send selected question to ChatGPT"
     }
   }
 }

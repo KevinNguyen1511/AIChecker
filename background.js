@@ -1,4 +1,4 @@
-// Register right-click context menu
+// Register context menu
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
     id: "sendToChatGPT",
@@ -7,24 +7,26 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
+// Handle Right-Click menu triggers
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "sendToChatGPT" && info.selectionText) {
-    forwardToChatGPT(info.selectionText);
+  if (info.menuItemId === "sendToChatGPT" && info.selectionText && tab?.id) {
+    chrome.tabs.sendMessage(tab.id, { action: "DISPLAY_ANSWER", answer: "⏳ Sending question to ChatGPT..." });
+    forwardToChatGPT(info.selectionText, tab.id);
   }
 });
 
+// Handle Option+S shortcut triggers
 chrome.commands.onCommand.addListener((command) => {
   if (command === "send-quiz-question") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.id) {
         chrome.tabs.sendMessage(tabs[0].id, { action: "GET_SELECTION" }, (response) => {
-          // Handle case where content.js isn't loaded on the active quiz tab
           if (chrome.runtime.lastError) {
-            console.warn("Quiz tab not ready or refreshed:", chrome.runtime.lastError.message);
+            console.warn("Quiz tab not refreshed:", chrome.runtime.lastError.message);
             return;
           }
           if (response?.text) {
-            forwardToChatGPT(response.text);
+            forwardToChatGPT(response.text, tabs[0].id);
           }
         });
       }
@@ -32,29 +34,25 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
-function forwardToChatGPT(promptText) {
-  const formattedPrompt = `Solve this quiz question quickly and clearly. State the best option/answer first:\n\n${promptText}`;
+function forwardToChatGPT(promptText, quizTabId) {
+  const formattedPrompt = `Give only the direct answer/choice for this question in 1-2 short sentences:\n\n${promptText}`;
 
   chrome.tabs.query({ url: "https://chatgpt.com/*" }, (tabs) => {
     if (tabs.length > 0) {
       const chatTab = tabs[0];
       
-      // Try sending message to existing ChatGPT tab
       chrome.tabs.sendMessage(chatTab.id, { action: "INJECT_PROMPT", prompt: formattedPrompt }, (response) => {
-        // If receiving end doesn't exist yet, focus and reload or open a fresh tab
         if (chrome.runtime.lastError) {
-          console.log("ChatGPT tab bridge missing. Opening prompt directly via URL...");
-          chrome.tabs.create({
-            url: `https://chatgpt.com/?q=${encodeURIComponent(formattedPrompt)}`
+          chrome.tabs.sendMessage(quizTabId, { 
+            action: "DISPLAY_ANSWER", 
+            answer: "❌ ChatGPT tab is not ready. Please refresh your ChatGPT tab." 
           });
-        } else {
-          chrome.tabs.update(chatTab.id, { active: true });
         }
       });
     } else {
-      // If no ChatGPT tab is open, open one automatically with query parameter
-      chrome.tabs.create({
-        url: `https://chatgpt.com/?q=${encodeURIComponent(formattedPrompt)}`
+      chrome.tabs.sendMessage(quizTabId, { 
+        action: "DISPLAY_ANSWER", 
+        answer: "⚠️ Please open https://chatgpt.com in a separate tab first!" 
       });
     }
   });

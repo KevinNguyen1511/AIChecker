@@ -1,20 +1,45 @@
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "INJECT_PROMPT" && request.prompt) {
-    const textarea = document.querySelector("#prompt-textarea");
+    const inputField = 
+      document.querySelector("#prompt-textarea") || 
+      document.querySelector('div[contenteditable="true"]') ||
+      document.querySelector('textarea');
 
-    if (textarea) {
-      // Set value inside contenteditable div
-      textarea.innerHTML = `<p>${request.prompt}</p>`;
-      textarea.dispatchEvent(new Event("input", { bubbles: true }));
+    if (inputField) {
+      inputField.focus();
+      
+      if (inputField.tagName.toLowerCase() === 'textarea') {
+        inputField.value = request.prompt;
+      } else {
+        inputField.innerHTML = `<p>${request.prompt}</p>`;
+      }
+      
+      inputField.dispatchEvent(new Event("input", { bubbles: true }));
+      inputField.dispatchEvent(new Event("change", { bubbles: true }));
 
-      // Trigger the send button click
+      // Dispatch automated submission after state update
       setTimeout(() => {
-        const sendBtn = document.querySelector('button[data-testid="send-button"]') || 
-                         document.querySelector('button[aria-label="Send prompt"]');
-        if (sendBtn) {
+        const sendBtn = 
+          document.querySelector('button[data-testid="send-button"]') || 
+          document.querySelector('button[aria-label="Send prompt"]') ||
+          document.querySelector('button[aria-label="Send message"]');
+        
+        if (sendBtn && !sendBtn.disabled) {
           sendBtn.click();
+        } else {
+          // Fallback Enter key trigger
+          inputField.dispatchEvent(new KeyboardEvent("keydown", {
+            key: "Enter",
+            code: "Enter",
+            keyCode: 13,
+            which: 13,
+            bubbles: true
+          }));
         }
-      }, 300);
+      }, 400);
+
+      sendResponse({ status: "success" });
     }
   }
+  return true;
 });
