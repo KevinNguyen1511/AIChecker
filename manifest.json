@@ -1,0 +1,38 @@
+{
+  "manifest_version": 3,
+  "name": "Universal Quiz AI Bridge",
+  "version": "1.0",
+  "description": "Extracts quiz questions from any website and forwards them directly to ChatGPT.",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs",
+    "contextMenus"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://chatgpt.com/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"]
+    },
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["chatgpt_bridge.js"]
+    }
+  ],
+  "commands": {
+    "send-quiz-question": {
+      "suggested_key": {
+        "default": "Alt+S",
+        "mac": "Alt+S"
+      },
+      "description": "Send selected text or question block to ChatGPT"
+    }
+  }
+}
