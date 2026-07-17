@@ -1,8 +1,18 @@
 function ensureAnswerBox() {
-  let box = document.getElementById("quiz-answer-popup");
-  if (box) return box;
+  let host = document.getElementById("quiz-assistant-root");
+  if (host) {
+    const shadowBox = host.shadowRoot.getElementById("quiz-answer-popup");
+    return { host, box: shadowBox, root: host.shadowRoot };
+  }
 
-  box = document.createElement("div");
+  // Create Shadow Host to isolate box from site styles
+  host = document.createElement("div");
+  host.id = "quiz-assistant-root";
+  host.style.cssText = "position: absolute !important; top: 0 !important; left: 0 !important; width: 0 !important; height: 0 !important; z-index: 2147483647 !important;";
+
+  const shadowRoot = host.attachShadow({ mode: "open" });
+
+  const box = document.createElement("div");
   box.id = "quiz-answer-popup";
 
   box.style.cssText = `
@@ -77,11 +87,12 @@ function ensureAnswerBox() {
 
   box.appendChild(header);
   box.appendChild(content);
+  shadowRoot.appendChild(box);
 
-  (document.documentElement || document.body).appendChild(box);
+  (document.body || document.documentElement).appendChild(host);
 
   makeDraggable(box, header);
-  return box;
+  return { host, box, root: shadowRoot };
 }
 
 function makeDraggable(box, handle) {
@@ -132,8 +143,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   } 
   
   if (request.action === "DISPLAY_ANSWER") {
-    const box = ensureAnswerBox();
-    const content = document.getElementById("quiz-answer-content");
+    const { box, root } = ensureAnswerBox();
+    const content = root.getElementById("quiz-answer-content");
     
     if (box && content) {
       box.style.setProperty("display", "flex", "important");
