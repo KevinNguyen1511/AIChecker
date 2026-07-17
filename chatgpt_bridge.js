@@ -1,3 +1,19 @@
+let port = null;
+
+function connectPort() {
+  try {
+    port = chrome.runtime.connect({ name: "chatgpt_stream" });
+    port.onDisconnect.addListener(() => {
+      port = null;
+      setTimeout(connectPort, 1000);
+    });
+  } catch (e) {
+    console.log("Port connection waiting...");
+  }
+}
+
+connectPort();
+
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "INJECT_PROMPT" && request.prompt) {
     injectAndSubmit(request.prompt);
@@ -34,15 +50,15 @@ function injectAndSubmit(textPrompt) {
         bubbles: true
       }));
     }
-    setupMutationObserver();
+    startStreaming();
   }, 350);
 }
 
-// Uses DOM MutationObserver instead of setInterval to bypass background tab throttling
-function setupMutationObserver() {
+function startStreaming() {
   let lastText = "";
-
-  const observer = new MutationObserver(() => {
+  
+  // High-frequency polling loop that triggers even when un-focused
+  const streamInterval = setInterval(() => {
     const responses = document.querySelectorAll(".markdown, .agent-turn");
     if (responses.length > 0) {
       const latestResponse = responses[responses.length - 1];
@@ -50,31 +66,38 @@ function setupMutationObserver() {
 
       if (answer.length > 0 && answer !== lastText) {
         lastText = answer;
-        chrome.runtime.sendMessage({
-          action: "RELAY_ANSWER_TO_QUIZ",
-          answer: answer
-        });
+        
+        // Push over persistent port first, fallback to runtime message
+        if (port) {
+          port.postMessage({ action: "RELAY_ANSWER_TO_QUIZ", answer: answer });
+        } else {
+          chrome.runtime.sendMessage({ action: "RELAY_ANSWER_TO_QUIZ", answer: answer });
+        }
+      }
+
+      // Check if ChatGPT finished generating (stop button disappeared)
+      const isGenerating = document.querySelector('button[aria-label="Stop generating"]') || 
+                           document.querySelector('button[data-testid="stop-button"]');
+      
+      if (!isGenerating && lastText.length > 0) {
+        // Send final payload and clear
+        if (port) port.postMessage({ action: "RELAY_ANSWER_TO_QUIZ", answer: lastText });
+        clearInterval(streamInterval);
       }
     }
-  });
+  }, 250);
 
-  observer.observe(document.body, {
-    childList: true,
-    subtree: true,
-    characterData: true
-  });
-
-  // Disconnect observer after 25 seconds to prevent memory leaks
-  setTimeout(() => observer.disconnect(), 25000);
+  // Safety timeout after 30s
+  setTimeout(() => clearInterval(streamInterval), 30000);
 }
 
-// Handles initial open via query string
+// Handle initial launch via URL query string
 if (window.location.search.includes("q=")) {
   setTimeout(() => {
     const sendBtn = 
       document.querySelector('button[data-testid="send-button"]') || 
       document.querySelector('button[aria-label="Send prompt"]');
     if (sendBtn) sendBtn.click();
-    setupMutationObserver();
+    startStreaming();
   }, 1000);
 }

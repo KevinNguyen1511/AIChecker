@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Universal Quiz AI Bridge",
-  "version": "1.0",
+  "version": "1.1",
   "description": "Extracts quiz questions and displays ChatGPT answers in a floating popup.",
   "permissions": [
     "activeTab",
@@ -23,7 +23,8 @@
     },
     {
       "matches": ["https://chatgpt.com/*"],
-      "js": ["chatgpt_bridge.js"]
+      "js": ["chatgpt_bridge.js"],
+      "run_at": "document_idle"
     }
   ],
   "commands": {

@@ -1,4 +1,25 @@
 let currentQuizTabId = null;
+let activePort = null;
+
+// Keep port listener alive to prevent background throttling
+chrome.runtime.onConnect.addListener((port) => {
+  if (port.name === "chatgpt_stream") {
+    activePort = port;
+    
+    port.onMessage.addListener((msg) => {
+      if (msg.action === "RELAY_ANSWER_TO_QUIZ" && currentQuizTabId) {
+        chrome.tabs.sendMessage(currentQuizTabId, {
+          action: "DISPLAY_ANSWER",
+          answer: msg.answer
+        });
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      activePort = null;
+    });
+  }
+});
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -57,7 +78,7 @@ function processQuery(promptText) {
   });
 }
 
-// Forward responses live to active quiz tab
+// Fallback message receiver
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === "RELAY_ANSWER_TO_QUIZ" && currentQuizTabId) {
     chrome.tabs.sendMessage(currentQuizTabId, {
