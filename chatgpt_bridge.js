@@ -1,10 +1,14 @@
-chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-  if (request.action === "INJECT_PROMPT" && request.prompt) {
-    injectAndSubmitPrompt(request.prompt);
-    sendResponse({ status: "processing" });
-  }
-  return true;
-});
+if (!window.chatGptBridgeInitialized) {
+  window.chatGptBridgeInitialized = true;
+
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    if (request.action === "INJECT_PROMPT" && request.prompt) {
+      injectAndSubmitPrompt(request.prompt);
+      sendResponse({ status: "success" });
+    }
+    return true;
+  });
+}
 
 function injectAndSubmitPrompt(textPrompt) {
   const textarea = 
@@ -14,46 +18,56 @@ function injectAndSubmitPrompt(textPrompt) {
   if (!textarea) return;
 
   textarea.focus();
-  
-  // 1. Force React to recognize input via ExecCommand
-  document.execCommand('insertText', false, textPrompt);
-  
-  // 2. Dispatch native input/change events
-  textarea.dispatchEvent(new Event("input", { bubbles: true }));
-  textarea.dispatchEvent(new Event("change", { bubbles: true }));
 
-  // 3. Wait for Send button to enable and click it
+  // Insert prompt natively into ChatGPT text area
+  document.execCommand('insertText', false, textPrompt);
+  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+
+  // Wait for React state to update before clicking submit
   setTimeout(() => {
     const sendBtn = 
       document.querySelector('button[data-testid="send-button"]') || 
       document.querySelector('button[aria-label="Send prompt"]') ||
       document.querySelector('button[aria-label="Send message"]');
 
-    if (sendBtn) {
+    if (sendBtn && !sendBtn.disabled) {
       sendBtn.click();
       observeChatGPTResponse();
+    } else {
+      // Fallback submission event
+      textarea.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        keyCode: 13,
+        which: 13,
+        bubbles: true
+      }));
+      observeChatGPTResponse();
     }
-  }, 300);
+  }, 350);
 }
 
-// Watch ChatGPT stream the response and relay it back to your quiz tab
 function observeChatGPTResponse() {
-  const observer = new MutationObserver(() => {
+  let checkCount = 0;
+  const interval = setInterval(() => {
+    checkCount++;
     const markdownElements = document.querySelectorAll(".markdown, .agent-turn");
+    
     if (markdownElements.length > 0) {
       const lastResponseElement = markdownElements[markdownElements.length - 1];
       const answerText = lastResponseElement.innerText.trim();
 
-      // Send answer text back to extension background script
-      chrome.runtime.sendMessage({
-        action: "RELAY_ANSWER_TO_QUIZ",
-        answer: answerText
-      });
+      if (answerText.length > 0) {
+        chrome.runtime.sendMessage({
+          action: "RELAY_ANSWER_TO_QUIZ",
+          answer: answerText
+        });
+      }
     }
-  });
 
-  observer.observe(document.body, { childList: true, subtree: true });
-
-  // Disconnect observer after 20 seconds to save system memory
-  setTimeout(() => observer.disconnect(), 20000);
+    // Stop checking after 25 seconds
+    if (checkCount > 50) {
+      clearInterval(interval);
+    }
+  }, 500);
 }
