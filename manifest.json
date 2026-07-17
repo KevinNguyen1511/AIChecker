@@ -1,13 +1,14 @@
 {
   "manifest_version": 3,
   "name": "Universal Quiz AI Bridge",
-  "version": "1.1",
-  "description": "Extracts quiz questions and displays ChatGPT answers in a floating popup.",
+  "version": "1.2",
+  "description": "Extracts quiz questions and displays ChatGPT answers live without tab switches.",
   "permissions": [
     "activeTab",
     "scripting",
     "tabs",
-    "contextMenus"
+    "contextMenus",
+    "offscreen"
   ],
   "host_permissions": [
     "<all_urls>",

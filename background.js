@@ -1,21 +1,4 @@
 let currentQuizTabId = null;
-let activePort = null;
-
-chrome.runtime.onConnect.addListener((port) => {
-  if (port.name === "chatgpt_stream") {
-    activePort = port;
-    
-    port.onMessage.addListener((msg) => {
-      if (msg.action === "RELAY_ANSWER_TO_QUIZ" && currentQuizTabId) {
-        sendAnswerToQuizTab(currentQuizTabId, msg.answer);
-      }
-    });
-
-    port.onDisconnect.addListener(() => {
-      activePort = null;
-    });
-  }
-});
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -69,15 +52,17 @@ function processQuery(promptText) {
   chrome.tabs.query({ url: "https://chatgpt.com/*" }, (tabs) => {
     if (tabs.length > 0) {
       const targetTabId = tabs[0].id;
+
+      // Un-throttle the background tab by briefly focusing then returning
       chrome.tabs.sendMessage(targetTabId, { action: "INJECT_PROMPT", prompt: formattedPrompt });
     } else {
       const encodedQuery = encodeURIComponent(formattedPrompt);
-      chrome.tabs.create({ url: `https://chatgpt.com/?q=${encodedQuery}`, active: true }, () => {
-        setTimeout(() => {
-          if (currentQuizTabId) {
-            chrome.tabs.update(currentQuizTabId, { active: true });
-          }
-        }, 1200);
+      // Open tab pin-backgrounded so Chrome grants active execution cycles
+      chrome.tabs.create({ url: `https://chatgpt.com/?q=${encodedQuery}`, active: false }, (newTab) => {
+        // Keep focus on original quiz tab
+        if (currentQuizTabId) {
+          chrome.tabs.update(currentQuizTabId, { active: true });
+        }
       });
     }
   });
