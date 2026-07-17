@@ -57,7 +57,6 @@ function injectAndSubmit(textPrompt) {
 function startStreaming() {
   let lastText = "";
   
-  // High-frequency polling loop that triggers even when un-focused
   const streamInterval = setInterval(() => {
     const responses = document.querySelectorAll(".markdown, .agent-turn");
     if (responses.length > 0) {
@@ -67,7 +66,6 @@ function startStreaming() {
       if (answer.length > 0 && answer !== lastText) {
         lastText = answer;
         
-        // Push over persistent port first, fallback to runtime message
         if (port) {
           port.postMessage({ action: "RELAY_ANSWER_TO_QUIZ", answer: answer });
         } else {
@@ -75,23 +73,19 @@ function startStreaming() {
         }
       }
 
-      // Check if ChatGPT finished generating (stop button disappeared)
       const isGenerating = document.querySelector('button[aria-label="Stop generating"]') || 
                            document.querySelector('button[data-testid="stop-button"]');
       
       if (!isGenerating && lastText.length > 0) {
-        // Send final payload and clear
         if (port) port.postMessage({ action: "RELAY_ANSWER_TO_QUIZ", answer: lastText });
         clearInterval(streamInterval);
       }
     }
   }, 250);
 
-  // Safety timeout after 30s
   setTimeout(() => clearInterval(streamInterval), 30000);
 }
 
-// Handle initial launch via URL query string
 if (window.location.search.includes("q=")) {
   setTimeout(() => {
     const sendBtn = 

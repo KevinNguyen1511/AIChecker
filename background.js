@@ -1,7 +1,6 @@
 let currentQuizTabId = null;
 let activePort = null;
 
-// Keep port listener alive to prevent background throttling
 chrome.runtime.onConnect.addListener((port) => {
   if (port.name === "chatgpt_stream") {
     activePort = port;
@@ -78,7 +77,6 @@ function processQuery(promptText) {
   });
 }
 
-// Fallback message receiver
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === "RELAY_ANSWER_TO_QUIZ" && currentQuizTabId) {
     chrome.tabs.sendMessage(currentQuizTabId, {
