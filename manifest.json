@@ -1,13 +1,18 @@
 {
   "manifest_version": 3,
   "name": "Universal Quiz AI Bridge",
-  "version": "3.0",
-  "description": "Instant live-streaming quiz assistant powered by Gemini API.",
+  "version": "4.0",
+  "description": "Streams ChatGPT answers directly into your quiz tab using the web interface.",
   "permissions": [
     "activeTab",
     "scripting",
     "tabs",
-    "contextMenus"
+    "contextMenus",
+    "storage"
+  ],
+  "host_permissions": [
+    "<all_urls>",
+    "https://chatgpt.com/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -16,6 +21,10 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"]
+    },
+    {
+      "matches": ["https://chatgpt.com/*"],
+      "js": ["chatgpt_bridge.js"]
     }
   ],
   "commands": {
@@ -24,7 +33,7 @@
         "default": "Alt+S",
         "mac": "Alt+S"
       },
-      "description": "Send selected question to Gemini AI"
+      "description": "Send selected question to ChatGPT"
     }
   }
 }

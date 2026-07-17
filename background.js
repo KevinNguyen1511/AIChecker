@@ -1,22 +1,16 @@
-// =========================================================
-// 🔑 PASTE YOUR FREE GEMINI API KEY HERE:
-const GEMINI_API_KEY = "YOUR_GEMINI_API_KEY_HERE";
-// =========================================================
-
-let currentQuizTabId = null;
+let quizTabId = null;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
-    id: "sendToGemini",
-    title: "Solve with Gemini",
+    id: "sendToChatGPT",
+    title: "Solve with ChatGPT",
     contexts: ["selection"]
   });
 });
 
 chrome.contextMenus.onClicked.addListener((info, tab) => {
-  if (info.menuItemId === "sendToGemini" && info.selectionText && tab?.id) {
-    currentQuizTabId = tab.id;
-    processApiStream(info.selectionText);
+  if (info.menuItemId === "sendToChatGPT" && info.selectionText && tab?.id) {
+    initiateSolveProcess(tab.id, info.selectionText);
   }
 });
 
@@ -24,104 +18,48 @@ chrome.commands.onCommand.addListener((command) => {
   if (command === "send-quiz-question") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.id) {
-        currentQuizTabId = tabs[0].id;
-
-        chrome.scripting.executeScript({
-          target: { tabId: tabs[0].id },
-          files: ["content.js"]
-        }).then(() => {
-          chrome.tabs.sendMessage(tabs[0].id, { action: "GET_SELECTION" }, (response) => {
-            if (response?.text) {
-              processApiStream(response.text);
-            }
-          });
-        }).catch(() => {
-          chrome.tabs.sendMessage(tabs[0].id, { action: "GET_SELECTION" }, (response) => {
-            if (response?.text) {
-              processApiStream(response.text);
-            }
-          });
+        chrome.tabs.sendMessage(tabs[0].id, { action: "GET_SELECTION" }, (response) => {
+          if (response?.text) {
+            initiateSolveProcess(tabs[0].id, response.text);
+          }
         });
       }
     });
   }
 });
 
-async function processApiStream(promptText) {
-  if (!currentQuizTabId) return;
+async function initiateSolveProcess(originTabId, questionText) {
+  quizTabId = originTabId;
 
-  if (!GEMINI_API_KEY || GEMINI_API_KEY.includes("YOUR_GEMINI_API_KEY_HERE")) {
-    sendAnswerToQuizTab(
-      currentQuizTabId,
-      "❌ Missing API Key! Please paste your free Gemini key at top of background.js."
-    );
+  // Find open chatgpt tab
+  const gptTabs = await chrome.tabs.query({ url: "https://chatgpt.com/*" });
+
+  if (gptTabs.length === 0) {
+    chrome.tabs.sendMessage(quizTabId, { 
+      action: "DISPLAY_ANSWER", 
+      answer: "❌ Please open chatgpt.com in another tab first!" 
+    });
     return;
   }
 
-  sendAnswerToQuizTab(currentQuizTabId, "⚡ Thinking...");
+  const gptTab = gptTabs[0];
+  const formattedPrompt = `SYSTEM INSTRUCTION: You are an instant multiple-choice quiz solver. Respond ONLY with the correct multiple-choice option (letter and answer choice) and a 1-sentence explanation.\n\nQUESTION:\n${questionText}`;
 
-  const formattedPrompt = `SYSTEM INSTRUCTION: You are an instant multiple-choice quiz solver. Respond ONLY with the correct multiple-choice option (letter and answer choice) and a 1-sentence explanation. Keep it extremely brief and short.\n\nQUESTION:\n${promptText}`;
+  // 1. Temporarily focus ChatGPT tab to wake Chrome JS engine up (bypasses tab throttling)
+  await chrome.tabs.update(gptTab.id, { active: true });
 
-  // Direct SSE stream endpoint for Gemini 1.5 Flash
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:streamGenerateContent?alt=sse&key=${GEMINI_API_KEY}`;
-
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: formattedPrompt }] }]
-      })
-    });
-
-    if (!response.ok) {
-      const errText = await response.text();
-      sendAnswerToQuizTab(currentQuizTabId, `❌ Gemini Error (${response.status}): ${errText}`);
-      return;
-    }
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let accumulatedText = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-
-      const chunk = decoder.decode(value, { stream: true });
-      const lines = chunk.split("\n");
-
-      for (const line of lines) {
-        if (line.startsWith("data: ")) {
-          try {
-            const parsed = JSON.parse(line.replace("data: ", ""));
-            const textChunk = parsed?.candidates?.[0]?.content?.parts?.[0]?.text;
-            if (textChunk) {
-              accumulatedText += textChunk;
-              sendAnswerToQuizTab(currentQuizTabId, accumulatedText);
-            }
-          } catch (e) {
-            // Ignore partial JSON frames
-          }
-        }
-      }
-    }
-  } catch (err) {
-    sendAnswerToQuizTab(currentQuizTabId, `❌ Request failed: ${err.message}`);
-  }
-}
-
-function sendAnswerToQuizTab(tabId, answerText) {
-  chrome.tabs.sendMessage(tabId, { action: "DISPLAY_ANSWER", answer: answerText }, (response) => {
-    if (chrome.runtime.lastError || !response) {
-      chrome.scripting.executeScript({
-        target: { tabId: tabId },
-        files: ["content.js"]
-      }).then(() => {
-        setTimeout(() => {
-          chrome.tabs.sendMessage(tabId, { action: "DISPLAY_ANSWER", answer: answerText });
-        }, 100);
-      }).catch(() => {});
-    }
+  // 2. Send request to bridge script inside ChatGPT
+  chrome.tabs.sendMessage(gptTab.id, { action: "SOLVE_QUESTION", prompt: formattedPrompt }, async () => {
+    // 3. Instantly switch back to quiz tab
+    await chrome.tabs.update(quizTabId, { active: true });
   });
 }
+
+// Relay stream updates back to quiz tab
+chrome.runtime.onMessage.addListener((message) => {
+  if (quizTabId && (message.action === "STREAM_UPDATE" || message.action === "STREAM_DONE")) {
+    chrome.tabs.sendMessage(quizTabId, { action: "DISPLAY_ANSWER", answer: message.text });
+  } else if (quizTabId && message.action === "BRIDGE_ERROR") {
+    chrome.tabs.sendMessage(quizTabId, { action: "DISPLAY_ANSWER", answer: `❌ ${message.error}` });
+  }
+});
