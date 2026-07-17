@@ -1,156 +1,109 @@
-function ensureAnswerBox() {
-  let host = document.getElementById("quiz-assistant-root");
-  if (host) {
-    const shadowBox = host.shadowRoot.getElementById("quiz-answer-popup");
-    return { host, box: shadowBox, root: host.shadowRoot };
-  }
+// Build or retrieve floating answer container
+function getOrCreateAnswerBox() {
+  let box = document.getElementById("quiz-answer-popup");
+  if (box) return box;
 
-  // Shadow DOM container to prevent page CSS interference
-  host = document.createElement("div");
-  host.id = "quiz-assistant-root";
-  host.style.cssText = "position: absolute !important; top: 0 !important; left: 0 !important; width: 0 !important; height: 0 !important; z-index: 2147483647 !important;";
-
-  const shadowRoot = host.attachShadow({ mode: "open" });
-
-  const box = document.createElement("div");
+  box = document.createElement("div");
   box.id = "quiz-answer-popup";
 
-  // HIDDEN BY DEFAULT
-  box.style.cssText = `
-    position: fixed !important;
-    bottom: 20px !important;
-    right: 20px !important;
-    width: 360px !important;
-    min-height: 80px !important;
-    max-height: 380px !important;
-    background-color: #1e1e2e !important;
-    color: #cdd6f4 !important;
-    border-radius: 12px !important;
-    box-shadow: 0px 10px 30px rgba(0,0,0,0.6) !important;
-    z-index: 2147483647 !important;
-    display: none !important;
-    flex-direction: column !important;
-    font-family: system-ui, -apple-system, sans-serif !important;
-    font-size: 14px !important;
-    line-height: 1.5 !important;
-    border: 1px solid #45475a !important;
-    overflow: hidden !important;
-  `;
+  // Dynamic styling
+  Object.assign(box.style, {
+    position: "fixed",
+    bottom: "20px",
+    right: "20px",
+    width: "320px",
+    minHeight: "80px",
+    maxHeight: "400px",
+    backgroundColor: "#1e1e2e",
+    color: "#cdd6f4",
+    borderRadius: "12px",
+    boxShadow: "0px 10px 30px rgba(0,0,0,0.4)",
+    zIndex: "9999999",
+    display: "none",
+    flexDirection: "column",
+    fontFamily: "system-ui, -apple-system, sans-serif",
+    fontSize: "14px",
+    lineHeight: "1.5",
+    border: "1px solid #45475a",
+    overflow: "hidden",
+    transition: "height 0.2s ease, width 0.2s ease"
+  });
 
+  // Top Bar with Close Button
   const header = document.createElement("div");
-  header.style.cssText = `
-    display: flex !important;
-    justify-content: space-between !important;
-    align-items: center !important;
-    padding: 8px 12px !important;
-    background-color: #181825 !important;
-    border-bottom: 1px solid #313244 !important;
-    user-select: none !important;
-    cursor: grab !important;
-  `;
+  Object.assign(header.style, {
+    display: "flex",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: "8px 12px",
+    backgroundColor: "#181825",
+    borderBottom: "1px solid #313244",
+    userSelect: "none"
+  });
 
   const title = document.createElement("span");
   title.innerText = "⚡ Quiz Assistant";
-  title.style.cssText = "font-weight: bold !important; color: #89b4fa !important; font-size: 12px !important; pointer-events: none !important;";
+  title.style.fontWeight = "bold";
+  title.style.color = "#89b4fa";
+  title.style.fontSize = "12px";
 
   const closeBtn = document.createElement("button");
   closeBtn.innerText = "✕";
-  closeBtn.style.cssText = `
-    background: transparent !important;
-    border: none !important;
-    color: #a6adc8 !important;
-    font-size: 16px !important;
-    font-weight: bold !important;
-    cursor: pointer !important;
-    padding: 0 4px !important;
-    line-height: 1 !important;
-  `;
+  Object.assign(closeBtn.style, {
+    background: "transparent",
+    border: "none",
+    color: "#a6adc8",
+    fontSize: "16px",
+    cursor: "pointer",
+    padding: "0 4px",
+    lineHeight: "1"
+  });
 
-  closeBtn.onclick = (e) => {
-    e.stopPropagation();
-    box.style.setProperty("display", "none", "important");
+  closeBtn.onmouseover = () => (closeBtn.style.color = "#f38ba8");
+  closeBtn.onmouseout = () => (closeBtn.style.color = "#a6adc8");
+  closeBtn.onclick = () => {
+    box.style.display = "none";
   };
 
   header.appendChild(title);
   header.appendChild(closeBtn);
 
+  // Content Container
   const content = document.createElement("div");
   content.id = "quiz-answer-content";
-  content.style.cssText = `
-    padding: 12px 14px !important;
-    overflow-y: auto !important;
-    word-break: break-word !important;
-    max-height: 320px !important;
-    color: #cdd6f4 !important;
-    white-space: pre-wrap !important;
-  `;
+  Object.assign(content.style, {
+    padding: "12px 14px",
+    overflowY: "auto",
+    wordBreak: "break-word",
+    maxHeight: "350px"
+  });
 
   box.appendChild(header);
   box.appendChild(content);
-  shadowRoot.appendChild(box);
+  document.body.appendChild(box);
 
-  (document.body || document.documentElement).appendChild(host);
-
-  makeDraggable(box, header);
-  return { host, box, root: shadowRoot };
+  return box;
 }
 
-function makeDraggable(box, handle) {
-  let isDragging = false;
-  let startX = 0, startY = 0, initialLeft = 0, initialTop = 0;
-
-  handle.addEventListener("mousedown", (e) => {
-    if (e.target.tagName === "BUTTON") return;
-    isDragging = true;
-    handle.style.cursor = "grabbing";
-
-    const rect = box.getBoundingClientRect();
-    box.style.setProperty("bottom", "auto", "important");
-    box.style.setProperty("right", "auto", "important");
-    box.style.setProperty("left", `${rect.left}px`, "important");
-    box.style.setProperty("top", `${rect.top}px`, "important");
-
-    startX = e.clientX;
-    startY = e.clientY;
-    initialLeft = rect.left;
-    initialTop = rect.top;
-
-    const onMouseMove = (moveEvent) => {
-      if (!isDragging) return;
-      box.style.setProperty("left", `${initialLeft + (moveEvent.clientX - startX)}px`, "important");
-      box.style.setProperty("top", `${initialTop + (moveEvent.clientY - startY)}px`, "important");
-    };
-
-    const onMouseUp = () => {
-      isDragging = false;
-      handle.style.cursor = "grab";
-      document.removeEventListener("mousemove", onMouseMove);
-      document.removeEventListener("mouseup", onMouseUp);
-    };
-
-    document.addEventListener("mousemove", onMouseMove);
-    document.addEventListener("mouseup", onMouseUp);
-  });
-}
-
+// Handle inbound tab messages
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "GET_SELECTION") {
-    sendResponse({ text: window.getSelection().toString().trim() });
-    return true;
-  } 
-  
-  if (request.action === "DISPLAY_ANSWER") {
-    const { box, root } = ensureAnswerBox();
-    const content = root.getElementById("quiz-answer-content");
+    const text = window.getSelection().toString().trim();
+    sendResponse({ text: text });
+  } else if (request.action === "DISPLAY_ANSWER") {
+    const box = getOrCreateAnswerBox();
+    const content = document.getElementById("quiz-answer-content");
     
-    if (box && content) {
-      // UNHIDE ONLY WHEN WRITING AN ANSWER
-      box.style.setProperty("display", "flex", "important");
-      content.innerText = request.answer;
-      content.scrollTop = content.scrollHeight;
+    box.style.display = "flex";
+    content.innerText = request.answer;
+
+    // Expand width automatically for long content
+    if (request.answer.length > 200) {
+      box.style.width = "400px";
+    } else {
+      box.style.width = "320px";
     }
-    
-    sendResponse({ status: "displayed" });
-    return true;
+
+    content.scrollTop = 0;
   }
 });

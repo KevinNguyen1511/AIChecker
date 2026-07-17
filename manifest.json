@@ -1,14 +1,13 @@
 {
   "manifest_version": 3,
   "name": "Universal Quiz AI Bridge",
-  "version": "4.0",
-  "description": "Streams ChatGPT answers directly into your quiz tab using the web interface.",
+  "version": "1.0",
+  "description": "Extracts quiz questions and displays ChatGPT answers in a floating popup.",
   "permissions": [
     "activeTab",
     "scripting",
     "tabs",
-    "contextMenus",
-    "storage"
+    "contextMenus"
   ],
   "host_permissions": [
     "<all_urls>",
