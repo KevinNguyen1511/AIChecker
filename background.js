@@ -11,7 +11,7 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === "sendToChatGPT" && info.selectionText && tab?.id) {
     currentQuizTabId = tab.id;
-    processQuery(info.selectionText);
+    processDirectStream(info.selectionText);
   }
 });
 
@@ -20,20 +20,21 @@ chrome.commands.onCommand.addListener((command) => {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
       if (tabs[0]?.id) {
         currentQuizTabId = tabs[0].id;
-        
+
+        // Ensure content script is ready
         chrome.scripting.executeScript({
           target: { tabId: tabs[0].id },
           files: ["content.js"]
         }).then(() => {
           chrome.tabs.sendMessage(tabs[0].id, { action: "GET_SELECTION" }, (response) => {
             if (response?.text) {
-              processQuery(response.text);
+              processDirectStream(response.text);
             }
           });
         }).catch(() => {
           chrome.tabs.sendMessage(tabs[0].id, { action: "GET_SELECTION" }, (response) => {
             if (response?.text) {
-              processQuery(response.text);
+              processDirectStream(response.text);
             }
           });
         });
@@ -42,30 +43,91 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
-function processQuery(promptText) {
-  const formattedPrompt = `SYSTEM INSTRUCTION: You are an instant multiple-choice quiz solver. Respond ONLY with the correct multiple-choice option (letter and answer choice) and a 1-sentence explanation. Keep it extremely brief and short.\n\nQUESTION:\n${promptText}`;
+// Helper to get active session token from chatgpt.com
+async function getAccessToken() {
+  try {
+    const response = await fetch("https://chatgpt.com/api/auth/session");
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.accessToken || null;
+  } catch (e) {
+    return null;
+  }
+}
 
-  if (currentQuizTabId) {
-    sendAnswerToQuizTab(currentQuizTabId, "⚡ Thinking...");
+async function processDirectStream(promptText) {
+  if (!currentQuizTabId) return;
+
+  sendAnswerToQuizTab(currentQuizTabId, "⚡ Connecting to ChatGPT stream...");
+
+  const accessToken = await getAccessToken();
+
+  if (!accessToken) {
+    sendAnswerToQuizTab(
+      currentQuizTabId,
+      "❌ Not logged in! Please open chatgpt.com in a new tab, log in, and try again."
+    );
+    return;
   }
 
-  chrome.tabs.query({ url: "https://chatgpt.com/*" }, (tabs) => {
-    if (tabs.length > 0) {
-      const targetTabId = tabs[0].id;
+  const formattedPrompt = `SYSTEM INSTRUCTION: You are an instant multiple-choice quiz solver. Respond ONLY with the correct multiple-choice option (letter and answer choice) and a 1-sentence explanation. Keep it extremely brief and short.\n\nQUESTION:\n${promptText}`;
 
-      // Un-throttle the background tab by briefly focusing then returning
-      chrome.tabs.sendMessage(targetTabId, { action: "INJECT_PROMPT", prompt: formattedPrompt });
-    } else {
-      const encodedQuery = encodeURIComponent(formattedPrompt);
-      // Open tab pin-backgrounded so Chrome grants active execution cycles
-      chrome.tabs.create({ url: `https://chatgpt.com/?q=${encodedQuery}`, active: false }, (newTab) => {
-        // Keep focus on original quiz tab
-        if (currentQuizTabId) {
-          chrome.tabs.update(currentQuizTabId, { active: true });
-        }
-      });
+  try {
+    const response = await fetch("https://chatgpt.com/backend-api/conversation", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${accessToken}`
+      },
+      body: JSON.stringify({
+        action: "next",
+        messages: [
+          {
+            id: crypto.randomUUID(),
+            author: { role: "user" },
+            content: { content_type: "text", parts: [formattedPrompt] }
+          }
+        ],
+        model: "auto",
+        timezone_offset_min: -480
+      })
+    });
+
+    if (!response.ok) {
+      sendAnswerToQuizTab(currentQuizTabId, `❌ ChatGPT Error: ${response.statusText}`);
+      return;
     }
-  });
+
+    // Read response network stream in real-time
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let accumulatedAnswer = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const chunk = decoder.decode(value, { stream: true });
+      const lines = chunk.split("\n");
+
+      for (const line of lines) {
+        if (line.startsWith("data: ") && !line.includes("[DONE]")) {
+          try {
+            const parsed = JSON.parse(line.replace("data: ", ""));
+            const parts = parsed?.message?.content?.parts;
+            if (parts && parts.length > 0) {
+              accumulatedAnswer = parts[0];
+              sendAnswerToQuizTab(currentQuizTabId, accumulatedAnswer);
+            }
+          } catch (e) {
+            // Ignore incomplete JSON stream chunks
+          }
+        }
+      }
+    }
+  } catch (err) {
+    sendAnswerToQuizTab(currentQuizTabId, `❌ Stream failed: ${err.message}`);
+  }
 }
 
 function sendAnswerToQuizTab(tabId, answerText) {
@@ -82,9 +144,3 @@ function sendAnswerToQuizTab(tabId, answerText) {
     }
   });
 }
-
-chrome.runtime.onMessage.addListener((request) => {
-  if (request.action === "RELAY_ANSWER_TO_QUIZ" && currentQuizTabId) {
-    sendAnswerToQuizTab(currentQuizTabId, request.answer);
-  }
-});
