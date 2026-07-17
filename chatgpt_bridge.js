@@ -8,7 +8,7 @@ function connectPort() {
       setTimeout(connectPort, 1000);
     });
   } catch (e) {
-    console.log("Port connection waiting...");
+    setTimeout(connectPort, 1000);
   }
 }
 
@@ -50,48 +50,75 @@ function injectAndSubmit(textPrompt) {
         bubbles: true
       }));
     }
-    startStreaming();
+    
+    // Start tracking real-time DOM changes
+    observeLiveStream();
   }, 350);
 }
 
-function startStreaming() {
+function observeLiveStream() {
   let lastText = "";
-  
-  const streamInterval = setInterval(() => {
+
+  const sendUpdate = (text) => {
+    if (text && text !== lastText) {
+      lastText = text;
+      const messageData = { action: "RELAY_ANSWER_TO_QUIZ", answer: text };
+      if (port) {
+        try {
+          port.postMessage(messageData);
+        } catch (e) {
+          chrome.runtime.sendMessage(messageData);
+        }
+      } else {
+        chrome.runtime.sendMessage(messageData);
+      }
+    }
+  };
+
+  // Watch ChatGPT DOM for streaming updates
+  const observer = new MutationObserver(() => {
     const responses = document.querySelectorAll(".markdown, .agent-turn");
     if (responses.length > 0) {
       const latestResponse = responses[responses.length - 1];
-      const answer = latestResponse.innerText.trim();
-
-      if (answer.length > 0 && answer !== lastText) {
-        lastText = answer;
-        
-        if (port) {
-          port.postMessage({ action: "RELAY_ANSWER_TO_QUIZ", answer: answer });
-        } else {
-          chrome.runtime.sendMessage({ action: "RELAY_ANSWER_TO_QUIZ", answer: answer });
-        }
-      }
-
-      const isGenerating = document.querySelector('button[aria-label="Stop generating"]') || 
-                           document.querySelector('button[data-testid="stop-button"]');
-      
-      if (!isGenerating && lastText.length > 0) {
-        if (port) port.postMessage({ action: "RELAY_ANSWER_TO_QUIZ", answer: lastText });
-        clearInterval(streamInterval);
-      }
+      const text = latestResponse.innerText.trim();
+      sendUpdate(text);
     }
-  }, 250);
+  });
 
-  setTimeout(() => clearInterval(streamInterval), 30000);
+  const targetNode = document.querySelector("main") || document.body;
+  observer.observe(targetNode, { childList: true, subtree: true, characterData: true });
+
+  // Fallback check to ensure observer doesn't miss the end of generation
+  const pollInterval = setInterval(() => {
+    const responses = document.querySelectorAll(".markdown, .agent-turn");
+    if (responses.length > 0) {
+      const latestResponse = responses[responses.length - 1];
+      sendUpdate(latestResponse.innerText.trim());
+    }
+
+    const isGenerating = document.querySelector('button[aria-label="Stop generating"]') || 
+                         document.querySelector('button[data-testid="stop-button"]');
+
+    if (!isGenerating && lastText.length > 0) {
+      observer.disconnect();
+      clearInterval(pollInterval);
+    }
+  }, 300);
+
+  // Safety cleanup timeout after 45 seconds
+  setTimeout(() => {
+    observer.disconnect();
+    clearInterval(pollInterval);
+  }, 45000);
 }
 
+// Handle query params when ChatGPT opens in a new tab
 if (window.location.search.includes("q=")) {
   setTimeout(() => {
     const sendBtn = 
       document.querySelector('button[data-testid="send-button"]') || 
       document.querySelector('button[aria-label="Send prompt"]');
     if (sendBtn) sendBtn.click();
-    startStreaming();
+    observeLiveStream();
   }, 1000);
 }

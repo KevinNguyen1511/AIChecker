@@ -38,7 +38,6 @@ chrome.commands.onCommand.addListener((command) => {
       if (tabs[0]?.id) {
         currentQuizTabId = tabs[0].id;
         
-        // Ensure content script is injected before asking for selection
         chrome.scripting.executeScript({
           target: { tabId: tabs[0].id },
           files: ["content.js"]
@@ -49,7 +48,6 @@ chrome.commands.onCommand.addListener((command) => {
             }
           });
         }).catch(() => {
-          // Fallback if scripting API fails
           chrome.tabs.sendMessage(tabs[0].id, { action: "GET_SELECTION" }, (response) => {
             if (response?.text) {
               processQuery(response.text);
@@ -65,7 +63,7 @@ function processQuery(promptText) {
   const formattedPrompt = `SYSTEM INSTRUCTION: You are an instant multiple-choice quiz solver. Respond ONLY with the correct multiple-choice option (letter and answer choice) and a 1-sentence explanation. Keep it extremely brief and short.\n\nQUESTION:\n${promptText}`;
 
   if (currentQuizTabId) {
-    sendAnswerToQuizTab(currentQuizTabId, "🔍 Looking at ChatGPT...");
+    sendAnswerToQuizTab(currentQuizTabId, "⚡ Thinking...");
   }
 
   chrome.tabs.query({ url: "https://chatgpt.com/*" }, (tabs) => {
@@ -74,7 +72,7 @@ function processQuery(promptText) {
       chrome.tabs.sendMessage(targetTabId, { action: "INJECT_PROMPT", prompt: formattedPrompt });
     } else {
       const encodedQuery = encodeURIComponent(formattedPrompt);
-      chrome.tabs.create({ url: `https://chatgpt.com/?q=${encodedQuery}`, active: true }, (newTab) => {
+      chrome.tabs.create({ url: `https://chatgpt.com/?q=${encodedQuery}`, active: true }, () => {
         setTimeout(() => {
           if (currentQuizTabId) {
             chrome.tabs.update(currentQuizTabId, { active: true });
@@ -85,11 +83,9 @@ function processQuery(promptText) {
   });
 }
 
-// Robust answer delivery that injects content.js if missing
 function sendAnswerToQuizTab(tabId, answerText) {
   chrome.tabs.sendMessage(tabId, { action: "DISPLAY_ANSWER", answer: answerText }, (response) => {
     if (chrome.runtime.lastError || !response) {
-      // Content script was missing or dropped message; force inject and retry
       chrome.scripting.executeScript({
         target: { tabId: tabId },
         files: ["content.js"]
@@ -97,7 +93,7 @@ function sendAnswerToQuizTab(tabId, answerText) {
         setTimeout(() => {
           chrome.tabs.sendMessage(tabId, { action: "DISPLAY_ANSWER", answer: answerText });
         }, 100);
-      }).catch(err => console.log("Script execution error:", err));
+      }).catch(() => {});
     }
   });
 }
