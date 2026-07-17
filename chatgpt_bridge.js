@@ -34,23 +34,20 @@ function injectAndSubmit(textPrompt) {
         bubbles: true
       }));
     }
-    observeResponse();
+    setupMutationObserver();
   }, 350);
 }
 
-function observeResponse() {
-  let checkCount = 0;
+// Uses DOM MutationObserver instead of setInterval to bypass background tab throttling
+function setupMutationObserver() {
   let lastText = "";
 
-  const interval = setInterval(() => {
-    checkCount++;
+  const observer = new MutationObserver(() => {
     const responses = document.querySelectorAll(".markdown, .agent-turn");
-    
     if (responses.length > 0) {
       const latestResponse = responses[responses.length - 1];
       const answer = latestResponse.innerText.trim();
 
-      // Send updates as ChatGPT streams the response live
       if (answer.length > 0 && answer !== lastText) {
         lastText = answer;
         chrome.runtime.sendMessage({
@@ -59,20 +56,25 @@ function observeResponse() {
         });
       }
     }
+  });
 
-    if (checkCount > 40) {
-      clearInterval(interval);
-    }
-  }, 500);
+  observer.observe(document.body, {
+    childList: true,
+    subtree: true,
+    characterData: true
+  });
+
+  // Disconnect observer after 25 seconds to prevent memory leaks
+  setTimeout(() => observer.disconnect(), 25000);
 }
 
-// Initial auto-submit run if page was loaded via URL query parameter
+// Handles initial open via query string
 if (window.location.search.includes("q=")) {
   setTimeout(() => {
     const sendBtn = 
       document.querySelector('button[data-testid="send-button"]') || 
       document.querySelector('button[aria-label="Send prompt"]');
     if (sendBtn) sendBtn.click();
-    observeResponse();
+    setupMutationObserver();
   }, 1000);
 }
