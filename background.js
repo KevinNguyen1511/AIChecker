@@ -1,5 +1,4 @@
 let currentQuizTabId = null;
-let activeChatGptTabId = null;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -9,16 +8,14 @@ chrome.runtime.onInstalled.addListener(() => {
   });
 });
 
-// Context Menu trigger
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === "sendToChatGPT" && info.selectionText && tab?.id) {
     currentQuizTabId = tab.id;
-    chrome.tabs.sendMessage(tab.id, { action: "DISPLAY_ANSWER", answer: "⏳ Processing question..." });
-    ensureChatGPTTabAndSend(info.selectionText);
+    chrome.tabs.sendMessage(tab.id, { action: "DISPLAY_ANSWER", answer: "⏳ Connecting to ChatGPT..." });
+    handleChatGPTFlow(info.selectionText);
   }
 });
 
-// Shortcut trigger (Option + S)
 chrome.commands.onCommand.addListener((command) => {
   if (command === "send-quiz-question") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
@@ -26,7 +23,7 @@ chrome.commands.onCommand.addListener((command) => {
         currentQuizTabId = tabs[0].id;
         chrome.tabs.sendMessage(tabs[0].id, { action: "GET_SELECTION" }, (response) => {
           if (response?.text) {
-            ensureChatGPTTabAndSend(response.text);
+            handleChatGPTFlow(response.text);
           }
         });
       }
@@ -34,7 +31,6 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
-// Relay generated answer back to quiz tab
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === "RELAY_ANSWER_TO_QUIZ" && currentQuizTabId) {
     chrome.tabs.sendMessage(currentQuizTabId, {
@@ -44,44 +40,46 @@ chrome.runtime.onMessage.addListener((request) => {
   }
 });
 
-// Ensures ChatGPT is open, injects bridge script if missing, and submits prompt
-async function ensureChatGPTTabAndSend(promptText) {
-  const tabs = await chrome.tabs.query({ url: "https://chatgpt.com/*" });
+async function handleChatGPTFlow(promptText) {
+  const formattedPrompt = `State the best direct answer choice for this question in 1-2 short sentences:\n\n${promptText}`;
   
+  const tabs = await chrome.tabs.query({ url: "https://chatgpt.com/*" });
   let targetTab = null;
 
   if (tabs.length > 0) {
     targetTab = tabs[0];
   } else {
-    // Open ChatGPT in a background tab if not found
-    targetTab = await chrome.tabs.create({ url: "https://chatgpt.com/", active: false });
-    // Wait briefly for page structure to load
-    await new Promise((resolve) => setTimeout(resolve, 3500));
+    // Open ChatGPT tab explicitly
+    targetTab = await chrome.tabs.create({ url: "https://chatgpt.com/", active: true });
+    
+    // Wait for initial DOM load
+    await new Promise(r => setTimeout(r, 4000));
+    
+    // Return focus back to quiz tab
+    if (currentQuizTabId) {
+      chrome.tabs.update(currentQuizTabId, { active: true });
+    }
   }
 
-  activeChatGptTabId = targetTab.id;
-
-  // Force-inject content script to guarantee active listener
+  // Inject content script reliably
   try {
     await chrome.scripting.executeScript({
-      target: { tabId: activeChatGptTabId },
+      target: { tabId: targetTab.id },
       files: ["chatgpt_bridge.js"]
     });
-  } catch (err) {
-    console.log("Script already injected or permission allowed:", err);
+  } catch (e) {
+    console.log("Script injection check:", e);
   }
 
-  // Send prompt to bridge script
-  const formattedPrompt = `Give only the direct answer choice for this question in 1-2 short sentences:\n\n${promptText}`;
-  
+  // Send prompt to chatgpt_bridge
   setTimeout(() => {
-    chrome.tabs.sendMessage(activeChatGptTabId, { action: "INJECT_PROMPT", prompt: formattedPrompt }, (res) => {
+    chrome.tabs.sendMessage(targetTab.id, { action: "INJECT_PROMPT", prompt: formattedPrompt }, (res) => {
       if (chrome.runtime.lastError && currentQuizTabId) {
         chrome.tabs.sendMessage(currentQuizTabId, {
           action: "DISPLAY_ANSWER",
-          answer: "⚠️ ChatGPT tab loading... Try pressing Option+S again in 3 seconds!"
+          answer: "❌ Unable to connect to ChatGPT. Refresh your ChatGPT tab and try again!"
         });
       }
     });
-  }, 500);
+  }, 600);
 }

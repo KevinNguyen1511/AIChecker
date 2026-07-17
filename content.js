@@ -1,4 +1,3 @@
-// Creates floating answer box directly on your quiz page
 function createAnswerBox() {
   let box = document.getElementById("ai-quiz-answer-box");
   if (!box) {
@@ -28,26 +27,30 @@ function createAnswerBox() {
   return box;
 }
 
-// Display messages inside the floating overlay
 function showAnswer(text, isError = false) {
   const box = createAnswerBox();
   box.style.display = "block";
   box.style.borderColor = isError ? "#f38ba8" : "#89b4fa";
+  
   box.innerHTML = `
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; font-weight:bold; color:#89b4fa;">
       <span>💡 AI Answer</span>
-      <span style="cursor:pointer; font-size:16px; color:#a6adc8;" onclick="this.parentElement.parentElement.style.display='none'">✕</span>
+      <span id="ai-quiz-close-btn" style="cursor:pointer; font-size:16px; color:#a6adc8; padding:2px 6px;">✕</span>
     </div>
-    <div>${text}</div>
+    <div id="ai-quiz-body">${text}</div>
   `;
+
+  // Attach functional click handler to close button
+  document.getElementById("ai-quiz-close-btn").addEventListener("click", () => {
+    box.style.display = "none";
+  });
 }
 
-// Listen for messages from background script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "GET_SELECTION") {
     const selectedText = window.getSelection().toString().trim();
     if (selectedText) {
-      showAnswer("⏳ Sending question to ChatGPT...");
+      showAnswer("⏳ Processing question...");
       sendResponse({ text: selectedText });
     } else {
       showAnswer("⚠️ Please highlight the question text first.", true);

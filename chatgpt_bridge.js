@@ -1,73 +1,76 @@
-if (!window.chatGptBridgeInitialized) {
-  window.chatGptBridgeInitialized = true;
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "INJECT_PROMPT" && request.prompt) {
+    injectTextAndSubmit(request.prompt);
+    sendResponse({ status: "ok" });
+  }
+  return true;
+});
 
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    if (request.action === "INJECT_PROMPT" && request.prompt) {
-      injectAndSubmitPrompt(request.prompt);
-      sendResponse({ status: "success" });
-    }
-    return true;
-  });
-}
-
-function injectAndSubmitPrompt(textPrompt) {
-  const textarea = 
+function injectTextAndSubmit(textPrompt) {
+  const inputEl = 
     document.querySelector("#prompt-textarea") || 
-    document.querySelector('div[contenteditable="true"]');
+    document.querySelector('div[contenteditable="true"]') ||
+    document.querySelector('textarea');
 
-  if (!textarea) return;
+  if (!inputEl) return;
 
-  textarea.focus();
+  inputEl.focus();
 
-  // Insert prompt natively into ChatGPT text area
-  document.execCommand('insertText', false, textPrompt);
-  textarea.dispatchEvent(new Event("input", { bubbles: true }));
+  // Clear existing content and write prompt
+  if (inputEl.tagName.toLowerCase() === 'textarea') {
+    inputEl.value = textPrompt;
+  } else {
+    inputEl.innerHTML = `<p>${textPrompt}</p>`;
+  }
 
-  // Wait for React state to update before clicking submit
+  // Dispatch events to satisfy React forms
+  inputEl.dispatchEvent(new Event("input", { bubbles: true }));
+  inputEl.dispatchEvent(new Event("change", { bubbles: true }));
+
   setTimeout(() => {
     const sendBtn = 
       document.querySelector('button[data-testid="send-button"]') || 
       document.querySelector('button[aria-label="Send prompt"]') ||
       document.querySelector('button[aria-label="Send message"]');
 
-    if (sendBtn && !sendBtn.disabled) {
+    if (sendBtn) {
       sendBtn.click();
-      observeChatGPTResponse();
+      monitorResponse();
     } else {
-      // Fallback submission event
-      textarea.dispatchEvent(new KeyboardEvent("keydown", {
+      // Fallback submission
+      const enterEvent = new KeyboardEvent("keydown", {
         key: "Enter",
         code: "Enter",
         keyCode: 13,
         which: 13,
         bubbles: true
-      }));
-      observeChatGPTResponse();
+      });
+      inputEl.dispatchEvent(enterEvent);
+      monitorResponse();
     }
-  }, 350);
+  }, 400);
 }
 
-function observeChatGPTResponse() {
-  let checkCount = 0;
+function monitorResponse() {
+  let attempts = 0;
   const interval = setInterval(() => {
-    checkCount++;
-    const markdownElements = document.querySelectorAll(".markdown, .agent-turn");
+    attempts++;
+    const responses = document.querySelectorAll(".markdown, .agent-turn");
     
-    if (markdownElements.length > 0) {
-      const lastResponseElement = markdownElements[markdownElements.length - 1];
-      const answerText = lastResponseElement.innerText.trim();
+    if (responses.length > 0) {
+      const latestResponse = responses[responses.length - 1];
+      const answer = latestResponse.innerText.trim();
 
-      if (answerText.length > 0) {
+      if (answer.length > 0) {
         chrome.runtime.sendMessage({
           action: "RELAY_ANSWER_TO_QUIZ",
-          answer: answerText
+          answer: answer
         });
       }
     }
 
-    // Stop checking after 25 seconds
-    if (checkCount > 50) {
+    if (attempts > 40) {
       clearInterval(interval);
     }
-  }, 500);
+  }, 600);
 }
