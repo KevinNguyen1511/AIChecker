@@ -6,56 +6,64 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 });
 
 async function sendPromptToChatGPT(promptText) {
-  // Find ChatGPT input textarea
-  const textarea = document.querySelector("#prompt-textarea") || document.querySelector("div[contenteditable='true']");
-  
-  if (!textarea) {
-    chrome.runtime.sendMessage({ action: "BRIDGE_ERROR", error: "ChatGPT input box not found. Please open chatgpt.com." });
+  // Find ChatGPT input element (handles both standard and ProseMirror inputs)
+  const inputEl = document.querySelector("#prompt-textarea") || 
+                  document.querySelector("div[contenteditable='true']") || 
+                  document.querySelector("textarea");
+
+  if (!inputEl) {
+    chrome.runtime.sendMessage({ action: "BRIDGE_ERROR", error: "ChatGPT input box not found. Make sure chatgpt.com is loaded." });
     return;
   }
 
-  // Set input text
-  textarea.focus();
-  if (textarea.tagName === "TEXTAREA") {
-    textarea.value = promptText;
+  inputEl.focus();
+
+  // Inject text cleanly into standard textareas or rich-text divs
+  if (inputEl.tagName === "TEXTAREA") {
+    inputEl.value = promptText;
   } else {
-    textarea.innerText = promptText;
+    // Clear existing inner HTML and append text block
+    inputEl.innerHTML = "";
+    const p = document.createElement("p");
+    p.innerText = promptText;
+    inputEl.appendChild(p);
   }
-  
-  textarea.dispatchEvent(new Event("input", { bubbles: true }));
 
-  // Brief delay to allow UI state update
-  await new Promise(r => setTimeout(r, 300));
+  // Trigger input events so React registers the text state change
+  inputEl.dispatchEvent(new InputEvent("input", { bubbles: true, inputType: "insertText" }));
+  inputEl.dispatchEvent(new Event("change", { bubbles: true }));
 
-  // Click send button
-  const sendButton = document.querySelector("button[data-testid='send-button']") || document.querySelector("button[aria-label='Send prompt']");
-  if (sendButton) {
+  await new Promise(r => setTimeout(r, 400));
+
+  // Find send button using multi-selector search
+  const sendButton = document.querySelector("button[data-testid='send-button']") || 
+                     document.querySelector("button[aria-label*='Send']") || 
+                     document.querySelector("button[title*='Send']");
+
+  if (sendButton && !sendButton.disabled) {
     sendButton.click();
   } else {
-    // Fallback Enter key trigger
-    textarea.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true }));
+    // Fallback key press trigger
+    inputEl.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter", code: "Enter", keyCode: 13, bubbles: true }));
   }
 
-  // Start watching output DOM
   observeChatGPTResponse();
 }
 
 function observeChatGPTResponse() {
-  const targetNode = document.querySelector("main");
+  const targetNode = document.querySelector("main") || document.body;
   if (!targetNode) return;
 
   const observer = new MutationObserver(() => {
-    // Select all assistant turns
     const assistantMessages = document.querySelectorAll("[data-message-author-role='assistant']");
     if (assistantMessages.length > 0) {
       const lastMessage = assistantMessages[assistantMessages.length - 1];
       const text = lastMessage.innerText;
 
-      // Broadcast text stream back to quiz tab
       chrome.runtime.sendMessage({ action: "STREAM_UPDATE", text: text });
 
-      // Check if generation completed (Stop button is gone)
-      const stopButton = document.querySelector("button[aria-label='Stop streaming']") || document.querySelector("button[data-testid='stop-button']");
+      // Detect generation end (Stop button replaced by send button)
+      const stopButton = document.querySelector("button[aria-label*='Stop']") || document.querySelector("button[data-testid='stop-button']");
       if (!stopButton && text.trim().length > 0) {
         observer.disconnect();
         chrome.runtime.sendMessage({ action: "STREAM_DONE", text: text });

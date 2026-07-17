@@ -5,7 +5,7 @@ function ensureAnswerBox() {
     return { host, box: shadowBox, root: host.shadowRoot };
   }
 
-  // Shadow DOM container to isolate styles from site CSS
+  // Shadow DOM container to prevent page CSS interference
   host = document.createElement("div");
   host.id = "quiz-assistant-root";
   host.style.cssText = "position: absolute !important; top: 0 !important; left: 0 !important; width: 0 !important; height: 0 !important; z-index: 2147483647 !important;";
@@ -15,11 +15,12 @@ function ensureAnswerBox() {
   const box = document.createElement("div");
   box.id = "quiz-answer-popup";
 
+  // HIDDEN BY DEFAULT
   box.style.cssText = `
     position: fixed !important;
     bottom: 20px !important;
     right: 20px !important;
-    width: 340px !important;
+    width: 360px !important;
     min-height: 80px !important;
     max-height: 380px !important;
     background-color: #1e1e2e !important;
@@ -27,15 +28,13 @@ function ensureAnswerBox() {
     border-radius: 12px !important;
     box-shadow: 0px 10px 30px rgba(0,0,0,0.6) !important;
     z-index: 2147483647 !important;
-    display: flex !important;
+    display: none !important;
     flex-direction: column !important;
     font-family: system-ui, -apple-system, sans-serif !important;
     font-size: 14px !important;
     line-height: 1.5 !important;
     border: 1px solid #45475a !important;
     overflow: hidden !important;
-    opacity: 1 !important;
-    visibility: visible !important;
   `;
 
   const header = document.createElement("div");
@@ -85,7 +84,6 @@ function ensureAnswerBox() {
     color: #cdd6f4 !important;
     white-space: pre-wrap !important;
   `;
-  content.innerText = "⚡ Ready! Highlight text & press Alt+S";
 
   box.appendChild(header);
   box.appendChild(content);
@@ -103,7 +101,6 @@ function makeDraggable(box, handle) {
 
   handle.addEventListener("mousedown", (e) => {
     if (e.target.tagName === "BUTTON") return;
-
     isDragging = true;
     handle.style.cursor = "grabbing";
 
@@ -120,10 +117,8 @@ function makeDraggable(box, handle) {
 
     const onMouseMove = (moveEvent) => {
       if (!isDragging) return;
-      const dx = moveEvent.clientX - startX;
-      const dy = moveEvent.clientY - startY;
-      box.style.setProperty("left", `${initialLeft + dx}px`, "important");
-      box.style.setProperty("top", `${initialTop + dy}px`, "important");
+      box.style.setProperty("left", `${initialLeft + (moveEvent.clientX - startX)}px`, "important");
+      box.style.setProperty("top", `${initialTop + (moveEvent.clientY - startY)}px`, "important");
     };
 
     const onMouseUp = () => {
@@ -149,19 +144,13 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     const content = root.getElementById("quiz-answer-content");
     
     if (box && content) {
+      // UNHIDE ONLY WHEN WRITING AN ANSWER
       box.style.setProperty("display", "flex", "important");
       content.innerText = request.answer;
       content.scrollTop = content.scrollHeight;
-
-      if (request.answer.length > 180) {
-        box.style.setProperty("width", "400px", "important");
-      }
     }
     
     sendResponse({ status: "displayed" });
     return true;
   }
 });
-
-// Create the box immediately on script load
-ensureAnswerBox();
