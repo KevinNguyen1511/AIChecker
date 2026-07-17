@@ -40,17 +40,16 @@ function showAnswer(text, isError = false) {
     <div id="ai-quiz-body">${text}</div>
   `;
 
-  // Attach functional click handler to close button
-  document.getElementById("ai-quiz-close-btn").addEventListener("click", () => {
+  document.getElementById("ai-quiz-close-btn").onclick = function() {
     box.style.display = "none";
-  });
+  };
 }
 
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   if (request.action === "GET_SELECTION") {
     const selectedText = window.getSelection().toString().trim();
     if (selectedText) {
-      showAnswer("⏳ Processing question...");
+      showAnswer("🚀 Opening ChatGPT...");
       sendResponse({ text: selectedText });
     } else {
       showAnswer("⚠️ Please highlight the question text first.", true);
