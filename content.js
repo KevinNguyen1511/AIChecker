@@ -5,6 +5,7 @@ function ensureAnswerBox() {
     return { host, box: shadowBox, root: host.shadowRoot };
   }
 
+  // Shadow DOM container to isolate styles from site CSS
   host = document.createElement("div");
   host.id = "quiz-assistant-root";
   host.style.cssText = "position: absolute !important; top: 0 !important; left: 0 !important; width: 0 !important; height: 0 !important; z-index: 2147483647 !important;";
@@ -19,14 +20,14 @@ function ensureAnswerBox() {
     bottom: 20px !important;
     right: 20px !important;
     width: 340px !important;
-    min-height: 70px !important;
+    min-height: 80px !important;
     max-height: 380px !important;
     background-color: #1e1e2e !important;
     color: #cdd6f4 !important;
     border-radius: 12px !important;
     box-shadow: 0px 10px 30px rgba(0,0,0,0.6) !important;
     z-index: 2147483647 !important;
-    display: none !important;
+    display: flex !important;
     flex-direction: column !important;
     font-family: system-ui, -apple-system, sans-serif !important;
     font-size: 14px !important;
@@ -50,7 +51,7 @@ function ensureAnswerBox() {
   `;
 
   const title = document.createElement("span");
-  title.innerText = "⚡ Quiz Assistant (Live)";
+  title.innerText = "⚡ Quiz Assistant";
   title.style.cssText = "font-weight: bold !important; color: #89b4fa !important; font-size: 12px !important; pointer-events: none !important;";
 
   const closeBtn = document.createElement("button");
@@ -84,6 +85,7 @@ function ensureAnswerBox() {
     color: #cdd6f4 !important;
     white-space: pre-wrap !important;
   `;
+  content.innerText = "⚡ Ready! Highlight text & press Alt+S";
 
   box.appendChild(header);
   box.appendChild(content);
@@ -149,8 +151,6 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     if (box && content) {
       box.style.setProperty("display", "flex", "important");
       content.innerText = request.answer;
-      
-      // Auto-scroll to bottom while streaming
       content.scrollTop = content.scrollHeight;
 
       if (request.answer.length > 180) {
@@ -163,4 +163,5 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 });
 
+// Create the box immediately on script load
 ensureAnswerBox();
