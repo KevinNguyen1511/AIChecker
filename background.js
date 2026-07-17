@@ -1,4 +1,5 @@
 let currentQuizTabId = null;
+let chatGptTabId = null;
 
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -11,7 +12,7 @@ chrome.runtime.onInstalled.addListener(() => {
 chrome.contextMenus.onClicked.addListener((info, tab) => {
   if (info.menuItemId === "sendToChatGPT" && info.selectionText && tab?.id) {
     currentQuizTabId = tab.id;
-    processAndOpenChatGPT(info.selectionText);
+    processQuery(info.selectionText);
   }
 });
 
@@ -22,7 +23,7 @@ chrome.commands.onCommand.addListener((command) => {
         currentQuizTabId = tabs[0].id;
         chrome.tabs.sendMessage(tabs[0].id, { action: "GET_SELECTION" }, (response) => {
           if (response?.text) {
-            processAndOpenChatGPT(response.text);
+            processQuery(response.text);
           }
         });
       }
@@ -30,32 +31,39 @@ chrome.commands.onCommand.addListener((command) => {
   }
 });
 
-function processAndOpenChatGPT(promptText) {
+function processQuery(promptText) {
   const formattedPrompt = `State the best direct answer choice for this question in 1-2 short sentences:\n\n${promptText}`;
-  const encodedQuery = encodeURIComponent(formattedPrompt);
-  const targetUrl = `https://chatgpt.com/?q=${encodedQuery}`;
 
-  // 1. Update status on quiz popup
   if (currentQuizTabId) {
     chrome.tabs.sendMessage(currentQuizTabId, { 
       action: "DISPLAY_ANSWER", 
-      answer: "🚀 Opening ChatGPT in new tab..." 
+      answer: "⏳ Fetching answer from ChatGPT..." 
     });
   }
 
-  // 2. Query if ChatGPT is already open
   chrome.tabs.query({ url: "https://chatgpt.com/*" }, (tabs) => {
     if (tabs.length > 0) {
-      // Navigate existing ChatGPT tab directly to URL query
-      chrome.tabs.update(tabs[0].id, { url: targetUrl, active: true });
+      // ChatGPT tab already exists: send in background without tab switching
+      chatGptTabId = tabs[0].id;
+      chrome.tabs.sendMessage(chatGptTabId, { action: "INJECT_PROMPT", prompt: formattedPrompt });
     } else {
-      // Create a new active tab directly
-      chrome.tabs.create({ url: targetUrl, active: true });
+      // First time setup: open tab with query parameter
+      const encodedQuery = encodeURIComponent(formattedPrompt);
+      chrome.tabs.create({ url: `https://chatgpt.com/?q=${encodedQuery}`, active: true }, (newTab) => {
+        chatGptTabId = newTab.id;
+
+        // Return focus back to quiz page after submit triggers
+        setTimeout(() => {
+          if (currentQuizTabId) {
+            chrome.tabs.update(currentQuizTabId, { active: true });
+          }
+        }, 1200);
+      });
     }
   });
 }
 
-// Receive streamed response from chatgpt_bridge.js and relay back to quiz box
+// Relays generated answer back to quiz popup box
 chrome.runtime.onMessage.addListener((request) => {
   if (request.action === "RELAY_ANSWER_TO_QUIZ" && currentQuizTabId) {
     chrome.tabs.sendMessage(currentQuizTabId, {

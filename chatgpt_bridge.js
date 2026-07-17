@@ -1,44 +1,44 @@
-// Function to force-click send or simulate Enter key
-function triggerAutoSubmit() {
-  const checkInput = setInterval(() => {
-    const inputArea = 
-      document.querySelector("#prompt-textarea") || 
-      document.querySelector('div[contenteditable="true"]');
+chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  if (request.action === "INJECT_PROMPT" && request.prompt) {
+    injectAndSubmit(request.prompt);
+    sendResponse({ status: "processing" });
+  }
+  return true;
+});
 
+function injectAndSubmit(textPrompt) {
+  const inputArea = 
+    document.querySelector("#prompt-textarea") || 
+    document.querySelector('div[contenteditable="true"]');
+
+  if (!inputArea) return;
+
+  inputArea.focus();
+  document.execCommand('insertText', false, textPrompt);
+  inputArea.dispatchEvent(new Event("input", { bubbles: true }));
+
+  setTimeout(() => {
     const sendButton = 
       document.querySelector('button[data-testid="send-button"]') || 
       document.querySelector('button[aria-label="Send prompt"]') ||
       document.querySelector('button[aria-label="Send message"]');
 
-    if (inputArea) {
-      inputArea.focus();
-
-      // If send button exists and is clickable, click it
-      if (sendButton && !sendButton.disabled) {
-        sendButton.click();
-        clearInterval(checkInput);
-        observeChatGPTResponse();
-      } else {
-        // Fallback: Dispatch Enter key press directly on input
-        const enterEvent = new KeyboardEvent("keydown", {
-          key: "Enter",
-          code: "Enter",
-          keyCode: 13,
-          which: 13,
-          bubbles: true,
-          cancelable: true
-        });
-        inputArea.dispatchEvent(enterEvent);
-      }
+    if (sendButton && !sendButton.disabled) {
+      sendButton.click();
+    } else {
+      inputArea.dispatchEvent(new KeyboardEvent("keydown", {
+        key: "Enter",
+        code: "Enter",
+        keyCode: 13,
+        which: 13,
+        bubbles: true
+      }));
     }
-  }, 300);
-
-  // Stop checking after 10 seconds to prevent endless loops
-  setTimeout(() => clearInterval(checkInput), 10000);
+    observeResponse();
+  }, 350);
 }
 
-// Watch ChatGPT's generated response and relay it back to quiz box
-function observeChatGPTResponse() {
+function observeResponse() {
   let checkCount = 0;
   const interval = setInterval(() => {
     checkCount++;
@@ -56,13 +56,19 @@ function observeChatGPTResponse() {
       }
     }
 
-    if (checkCount > 40) {
+    if (checkCount > 35) {
       clearInterval(interval);
     }
-  }, 800);
+  }, 600);
 }
 
-// Run auto-submit check if URL has prompt query
+// Handle initial launch via URL query string
 if (window.location.search.includes("q=")) {
-  setTimeout(triggerAutoSubmit, 1000);
+  setTimeout(() => {
+    const sendBtn = 
+      document.querySelector('button[data-testid="send-button"]') || 
+      document.querySelector('button[aria-label="Send prompt"]');
+    if (sendBtn) sendBtn.click();
+    observeResponse();
+  }, 1000);
 }
