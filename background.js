@@ -18,9 +18,19 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 chrome.commands.onCommand.addListener((command) => {
   if (command === "send-quiz-question") {
     chrome.tabs.query({ active: true, currentWindow: true }, (tabs) => {
+      if (!tabs || tabs.length === 0) return;
+      
       const tabId = tabs[0].id;
+      
       // Ask content.js for the highlighted text
       chrome.tabs.sendMessage(tabId, { action: "GET_SELECTION" }, (response) => {
+        
+        // Prevent crashes if the shortcut is pressed on restricted pages
+        if (chrome.runtime.lastError) {
+          console.warn("Cannot run on this page. Try on a normal website.");
+          return;
+        }
+        
         if (response && response.text) {
           callGeminiAPI(tabId, response.text);
         } else {
