@@ -52,9 +52,11 @@ async function callGeminiAPI(tabId, promptText) {
     return;
   }
 
-  // Your new strict, concise instructions
+  // Your strict, concise instructions
   const systemInstruction = "Give short answers only. In case of multiple choice, give the direct correct answer or letter immediately, followed by a super short 1-sentence explanation max.";
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${data.geminiKey}`;
+  
+  // Updated model URL to use Gemini 3.5 Flash
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${data.geminiKey}`;
 
   try {
     const response = await fetch(url, {
