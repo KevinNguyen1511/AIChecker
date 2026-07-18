@@ -52,7 +52,8 @@ async function callGeminiAPI(tabId, promptText) {
     return;
   }
 
-  const systemInstruction = "You are a quiz assistant. Provide the correct answer directly and concisely.";
+  // Your new strict, concise instructions
+  const systemInstruction = "Give short answers only. In case of multiple choice, give the direct correct answer or letter immediately, followed by a super short 1-sentence explanation max.";
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${data.geminiKey}`;
 
   try {
