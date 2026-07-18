@@ -1,38 +1,11 @@
 {
   "manifest_version": 3,
-  "name": "Universal Quiz AI Bridge",
+  "name": "Gemini Quiz Solver",
   "version": "1.0",
-  "description": "Extracts quiz questions and displays ChatGPT answers in a floating popup.",
-  "permissions": [
-    "activeTab",
-    "scripting",
-    "tabs",
-    "contextMenus"
-  ],
-  "host_permissions": [
-    "<all_urls>",
-    "https://chatgpt.com/*"
-  ],
+  "permissions": ["storage", "contextMenus", "scripting", "activeTab"],
+  "options_page": "options.html",
   "background": {
     "service_worker": "background.js"
   },
-  "content_scripts": [
-    {
-      "matches": ["<all_urls>"],
-      "js": ["content.js"]
-    },
-    {
-      "matches": ["https://chatgpt.com/*"],
-      "js": ["chatgpt_bridge.js"]
-    }
-  ],
-  "commands": {
-    "send-quiz-question": {
-      "suggested_key": {
-        "default": "Alt+S",
-        "mac": "Alt+S"
-      },
-      "description": "Send selected question to ChatGPT"
-    }
-  }
+  "content_scripts": [{ "matches": ["<all_urls>"], "js": ["content.js"] }]
 }

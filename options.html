@@ -1,0 +1,9 @@
+<h3>API Settings</h3>
+<input type="password" id="apiKey" placeholder="Paste your Gemini API Key">
+<button id="save">Save Key</button>
+<script>
+  document.getElementById('save').onclick = () => {
+    const key = document.getElementById('apiKey').value;
+    chrome.storage.local.set({ geminiKey: key }, () => alert('Key Saved!'));
+  };
+</script>
