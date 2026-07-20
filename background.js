@@ -1,3 +1,5 @@
+importScripts("screenshot_utils.js", "screenshot.js");
+
 // Create Right-Click Menu
 chrome.runtime.onInstalled.addListener(() => {
   chrome.contextMenus.create({
@@ -34,14 +36,29 @@ chrome.commands.onCommand.addListener((command) => {
         if (response && response.text) {
           callGeminiAPI(tabId, response.text);
         } else {
-          chrome.tabs.sendMessage(tabId, { action: "DISPLAY_ANSWER", answer: "⚠️ Please highlight a question first." });
+          // Nothing highlighted: let the user snip the question instead.
+          captureAndSolve(tabId);
         }
       });
     });
   }
 });
 
-async function callGeminiAPI(tabId, promptText) {
+// Snip a region of the page and send it to Gemini like a highlighted question.
+async function captureAndSolve(tabId) {
+  try {
+    const screenshot = await captureSelectedRegion();
+    await callGeminiAPI(tabId, "Answer the question shown in this image.", screenshot.dataUrl);
+  } catch (error) {
+    if (error instanceof ScreenshotSelectionCancelledError) return;
+    chrome.tabs.sendMessage(tabId, {
+      action: "DISPLAY_ANSWER",
+      answer: `❌ ${error instanceof Error ? error.message : "Unable to capture the selected region."}`
+    });
+  }
+}
+
+async function callGeminiAPI(tabId, promptText, imageDataUrl) {
   // Show loading state
   chrome.tabs.sendMessage(tabId, { action: "DISPLAY_ANSWER", answer: "⏳ Thinking..." });
 
@@ -58,13 +75,16 @@ async function callGeminiAPI(tabId, promptText) {
   // Updated model URL to use Gemini 3.5 Flash
   const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${data.geminiKey}`;
 
+  const parts = [{ text: `${systemInstruction}\n\nQuestion: ${promptText}` }];
+  if (imageDataUrl) {
+    parts.push({ inline_data: { mime_type: "image/png", data: imageDataUrl.split(",")[1] } });
+  }
+
   try {
     const response = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: `${systemInstruction}\n\nQuestion: ${promptText}` }] }]
-      })
+      body: JSON.stringify({ contents: [{ parts }] })
     });
 
     const json = await response.json();
